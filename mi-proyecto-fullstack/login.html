@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - ArquiBOSS</title>
+    <link rel="stylesheet" href="styles.css">
+
+</head>
+<body class="login-bg">
+
+    <div class="login-container">
+        <h2>Acceso ArquiBOSS</h2>
+        <form id="loginForm">
+            <input type="email" id="email" placeholder="Correo electrónico" required>
+            <input type="password" id="password" placeholder="Contraseña" required>
+            <button type="submit" class="btn-login">Entrar</button>
+        </form>
+        <p style="margin-top: 15px;"><a href="index.html" class="back-link">Continuar como Guest</a></p>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch('http://localhost:3000/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Guardamos el token para que el index.html sepa que somos admin
+                    localStorage.setItem('token', data.token);
+                    alert("¡Bienvenido Administrador!");
+                    window.location.href = 'index.html'; 
+                } else {
+                    alert("Error: " + data.mensaje);
+                }
+            } catch (error) {
+                alert("No se pudo conectar con el servidor.");
+            }
+        });
+    </script>
+</body>
+</html>

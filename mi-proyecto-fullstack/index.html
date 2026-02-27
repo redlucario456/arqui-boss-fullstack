@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>ArquiBOSS - Gestión Total</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+</head>
+<body>
+
+<header>
+    <h1 id="mainTitle">ArquiBOSS</h1>
+    <a href="login.html" id="authBtn" class="auth-link"><i class="fas fa-user-shield"></i> Acceso Admin</a>
+</header>
+
+<!-- 🌤️ CLIMA -->
+<div id="climaBox">
+    <h2>🌤️ Clima actual</h2>
+    <p id="ubicacion"></p>
+    <p id="temp">Cargando...</p>
+    <p id="viento"></p>
+    <p id="estado"></p>
+    <div id="buscadorCiudad" style="margin-top:15px;">
+        <input type="text" id="ciudadManual" placeholder="Otra ciudad...">
+        <button id="buscarCiudad" class="btn-main" style="padding:6px 12px; margin-left:5px;">Buscar</button>
+    </div>
+</div>
+
+<div id="seccionMensajesAdmin">
+    <h2><i class="fas fa-envelope-open-text"></i> Buzón de Consultas Privado</h2>
+    <div id="contenedorMensajes"></div>
+</div>
+
+<section id="proyectos">
+    <h2>Portafolio de Proyectos</h2>
+    <div class="proyectos-grid" id="contenedorProyectos"></div>
+</section>
+
+<div class="form-container">
+    <h2 id="tituloForm">Contacto</h2>
+    <form id="formularioContacto">
+        <input type="text" id="inputNombre" placeholder="Nombre / Título" required>
+        <div id="grupoEmail"><input type="email" id="inputEmail" placeholder="Tu Email"></div>
+        <div id="campoImagen"><input type="file" id="inputImagen" accept="image/*"></div>
+        <textarea id="inputMensaje" placeholder="Mensaje..." required></textarea>
+        <button type="submit" id="btnEnviar" class="btn-main">Enviar</button>
+    </form>
+</div>
+
+<div id="yoshi-egg">
+    <img src="https://media.giphy.com/media/Z6f79Ewt6L_t6/giphy.gif">
+    <h2>¡Yoshi Activado! 🦖</h2>
+</div>
+
+<footer>
+    <a href="#" class="insta-link"><i class="fab fa-instagram"></i></a>
+    <p>&copy; 2026 ArquiBOSS</p>
+</footer>
+
+<script>
+const API_URL = 'http://localhost:3000/api/proyectos';
+const token = localStorage.getItem('token');
+
+if (token) {
+    document.getElementById('authBtn').innerHTML = '<i class="fas fa-sign-out-alt"></i> Cerrar Sesión';
+    document.getElementById('authBtn').onclick = () => { localStorage.removeItem('token'); location.reload(); };
+    document.getElementById('grupoEmail').style.display = 'none';
+    document.getElementById('campoImagen').style.display = 'block';
+    document.getElementById('seccionMensajesAdmin').style.display = 'block';
+    // change form to project upload for admins
+    document.getElementById('tituloForm').innerText = 'Subir Proyecto';
+    document.getElementById('inputNombre').placeholder = 'Título del proyecto';
+    document.getElementById('inputMensaje').placeholder = 'Descripción del proyecto';
+}
+
+async function cargarContenido() {
+    const res = await fetch(API_URL);
+    const datos = await res.json();
+
+    const proyectos = datos.filter(p => !p.imageUrl.includes('default.jpg'));
+    const mensajes = datos.filter(p => p.imageUrl.includes('default.jpg'));
+
+    document.getElementById('contenedorProyectos').innerHTML = proyectos.map(p => {
+        let editBtn = '';
+        let deleteBtn = '';
+        if (token) {
+            const safeTitle = p.titulo.replace(/'/g, "\\'");
+            const safeDesc = p.descripcion.replace(/'/g, "\\'");
+            editBtn = `<button class="btn-main" onclick="abrirEditor(${p.id}, '${safeTitle}', '${safeDesc}')">Editar</button>`;
+            deleteBtn = `<button class="btn-delete" onclick="eliminar(${p.id})">Borrar</button>`;
+        }
+        return `
+        <div class="proyecto-item" data-id="${p.id}">
+            <img src="http://localhost:3000/${p.imageUrl}">
+            <h3>${p.titulo}</h3>
+            <p>${p.descripcion}</p>
+            ${editBtn || deleteBtn ? `<div class="btn-container">${editBtn} ${deleteBtn}</div>` : ''}
+        </div>
+        `;
+    }).join('');
+
+    if (token) {
+        document.getElementById('contenedorMensajes').innerHTML = mensajes.map(m => `
+            <div class="mensaje-card">
+                <div class="mensaje-texto"><strong>${m.titulo}</strong>: ${m.descripcion}</div>
+                <button class="btn-delete" onclick="eliminar(${m.id})">Borrar</button>
+            </div>
+        `).join('') || "Buzón vacío.";
+    }
+}
+
+async function cargarClima() {
+    // try to get user location first
+    let base = "http://localhost:3000/api/clima";
+
+    async function cargarDefault() {
+        const res = await fetch(base);
+        const data = await res.json();
+        document.getElementById('ubicacion').innerText = 'Ubicación: predeterminada';
+        mostrarClima(data);
+    }
+
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            let lat = pos.coords.latitude;
+            let lon = pos.coords.longitude;
+            // ignore invalid 0,0 coordinates
+            if (lat === 0 && lon === 0) {
+                await cargarDefault();
+                return;
+            }
+            document.getElementById('ubicacion').innerText =
+                `Coords: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            try {
+                const res = await fetch(`${base}?lat=${lat}&lon=${lon}`);
+                const data = await res.json();
+                mostrarClima(data);
+            } catch (err) {
+                mostrarError();
+            }
+        }, async () => {
+            // permission denied or error, fallback to default
+            await cargarDefault();
+        });
+    } else {
+        // geolocation not supported
+        document.getElementById('ubicacion').innerText =
+            'Ubicación: no soportada';
+        await cargarDefault();
+    }
+}
+
+// new helper for manual search
+async function buscarCiudadManual() {
+    const ciudad = document.getElementById('ciudadManual').value.trim();
+    if (!ciudad) return;
+    try {
+        const res = await fetch(`http://localhost:3000/api/clima?city=${encodeURIComponent(ciudad)}`);
+        const data = await res.json();
+        mostrarClima(data);
+    } catch (err) {
+        mostrarError();
+    }
+}
+
+// attach search button listener
+if (document.getElementById('buscarCiudad')) {
+    document.getElementById('buscarCiudad').addEventListener('click', buscarCiudadManual);
+}
+
+
+function mostrarClima(data) {
+    document.getElementById("temp").innerText = `🌡️ ${data.temperatura}°C`;
+    // treat zero windspeed as calm
+    const vientoVal = data.viento || 0;
+    document.getElementById("viento").innerText =
+        vientoVal > 0 ? `💨 Viento: ${vientoVal} km/h` : '💨 Viento: calma';
+    document.getElementById("estado").innerText = data.recomendacion;
+    document.getElementById("ubicacion").innerText = data.nombre ? `📍 ${data.nombre}` : document.getElementById('ubicacion').innerText || '';
+    // clear manual field
+    if (document.getElementById('ciudadManual')) document.getElementById('ciudadManual').value = '';
+}
+
+function mostrarError() {
+    document.getElementById("temp").innerText = "Error al cargar clima";
+}
+
+async function eliminar(id) {
+    if (!confirm("¿Eliminar?")) return;
+    await fetch(`${API_URL}/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    cargarContenido();
+}
+
+// muestra un prompt/simple form para editar un proyecto
+function abrirEditor(id, titulo, descripcion) {
+    const nuevoTitulo = prompt('Título:', titulo);
+    if (nuevoTitulo === null) return;
+    const nuevaDesc = prompt('Descripción:', descripcion);
+    if (nuevaDesc === null) return;
+
+    const formData = new FormData();
+    formData.append('titulo', nuevoTitulo);
+    formData.append('descripcion', nuevaDesc);
+    // también permitir reemplazar imagen opcionalmente
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = async () => {
+        if (fileInput.files[0]) {
+            formData.append('imagen', fileInput.files[0]);
+        }
+        await fetch(`${API_URL}/${id}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+        });
+        cargarContenido();
+    };
+    // trigger file picker or just send without image
+    if (confirm('¿Deseas cambiar la imagen?')) {
+        fileInput.click();
+    } else {
+        fetch(`${API_URL}/${id}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+        }).then(() => cargarContenido());
+    }
+}
+
+document.getElementById('formularioContacto').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append('titulo', document.getElementById('inputNombre').value);
+    let desc = document.getElementById('inputMensaje').value;
+    if (!token) desc = `[Email: ${document.getElementById('inputEmail').value}] ${desc}`;
+    formData.append('descripcion', desc);
+    const file = document.getElementById('inputImagen').files[0];
+    if (file) formData.append('imagen', file);
+
+    if (token && !file) {
+        alert('Debes seleccionar una imagen para crear un proyecto');
+        return;
+    }
+
+    try {
+        const fetchOptions = { method: 'POST', body: formData };
+        if (token) fetchOptions.headers = { 'Authorization': `Bearer ${token}` };
+        const resp = await fetch(API_URL, fetchOptions);
+        const data = await resp.json();
+        
+        if (!resp.ok) {
+            alert('Error: ' + (data.message || data.msg || 'No se pudo enviar'));
+            return;
+        }
+        
+        alert('Enviado con éxito');
+        document.getElementById('formularioContacto').reset();
+        cargarContenido();
+    } catch (error) {
+        console.error('Error en submit:', error);
+        alert('Error: ' + error.message);
+    }
+});
+
+let keys = [];
+window.addEventListener('keydown', (e) => {
+    keys.push(e.key);
+    if (keys.length > 4) keys.shift();
+    if (keys.join('') === "ArrowUpArrowUpArrowDownArrowDown") {
+        document.getElementById('yoshi-egg').style.display = 'block';
+        document.getElementById('mainTitle').style.color = '#44af35';
+    }
+    if (e.key === 'Escape') document.getElementById('yoshi-egg').style.display = 'none';
+});
+
+cargarContenido();
+
+cargarClima();
+// refrescar clima cada 10 minutos para que velocidad del viento no se quede fija
+setInterval(cargarClima, 10 * 60 * 1000);
+</script>
+
+</body>
+</html>
